@@ -1,33 +1,7 @@
 name: Build Sigil on Linux
 
 on:
-  push:
-    branches: [ master ]
-    tags-ignore:
-      - '**'
-    paths-ignore:
-    - 'docs/**'
-    - 'installer/win_installer_note.txt'
-    - 'ChangeLog.txt'
-    - 'COPYING.txt'
-    - 'version.xml'
-    - 'appveyor.yml'
-    - '.retired_travis.yml'
-    - '**.md'
-
-  pull_request:
-    branches: [ master ]
-    tags-ignore:
-      - '**'
-    paths-ignore:
-    - 'docs/**'
-    - 'installer/win_installer_note.txt'
-    - 'ChangeLog.txt'
-    - 'COPYING.txt'
-    - 'version.xml'
-    - 'appveyor.yml'
-    - '.retired_travis.yml'
-    - '**.md'
+  workflow_dispatch:
 
 env:
   BUILD_TYPE: Debug

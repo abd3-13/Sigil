@@ -1,33 +1,9 @@
 name: Build Sigil on macOS x86_64
 
 on:
-
   workflow_dispatch:
 
-  push:
-    branches: [ master ]
-    tags-ignore:
-      - '**'
-    paths-ignore:
-    - 'docs/**'
-    - 'installer/win_installer_note.txt'
-    - 'ChangeLog.txt'
-    - 'COPYING.txt'
-    - 'version.xml'
-    - '.retired_travis.yml'
-    - '**/**.md'
-  pull_request:
-    branches: [ master ]
-    tags-ignore:
-      - '**'
-    paths-ignore:
-    - 'docs/**'
-    - 'installer/win_installer_note.txt'
-    - 'ChangeLog.txt'
-    - 'COPYING.txt'
-    - 'version.xml'
-    - '.retired_travis.yml'
-    - '**/**.md'
+
 env:
   HOMEBREW_NO_AUTO_UPDATE: 1
   HOMEBREW_NO_INSTALL_CLEANUP: 1

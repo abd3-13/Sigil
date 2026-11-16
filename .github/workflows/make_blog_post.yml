@@ -1,9 +1,7 @@
 name: Make Blog Post
 
 on:
-  # Only create blog post after new Sigil release is published
-  release:
-    types: published
+  workflow_dispatch:
 
 jobs:
   post:
