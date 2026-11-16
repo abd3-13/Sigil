@@ -46,7 +46,7 @@ jobs:
             qt6-webengine-dev qt6-webengine-dev-tools qt6-l10n-tools qt6-svg-dev \
             libqt6webenginecore6-bin \
             libhunspell-dev libpcre2-dev libminizip-dev zlib1g-dev libssl-dev \
-            xz-utils gh \
+            xz-utils jq \
             xvfb xauth x11-utils libgl1
 
       - name: Build the package
@@ -99,34 +99,57 @@ jobs:
         run: |
           set -uo pipefail
           tag="${{ inputs.tag }}"
-          deb=$(basename dist/*.deb)
-          echo "Releasing $tag with $deb"
-          # run in a subshell so the failure text can be surfaced as an
-          # annotation (job logs need auth, annotations do not)
-          set +e
-          out=$(
-            set -e
-            gh api "repos/$GITHUB_REPOSITORY" -q .full_name >/dev/null
-            if ! gh release view "$tag" >/dev/null 2>&1; then
-              gh release create "$tag" \
-                --title "Sigil $tag (arm64 .deb)" \
-                --notes "arm64 Debian/Devuan package built natively on an arm64 runner from \`$tag\`.
+          deb=$(ls dist/*.deb | head -1)
+          name=$(basename "$deb")
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          hdr=(-H "Authorization: Bearer $GH_TOKEN"
+               -H "Accept: application/vnd.github+json"
+               -H "X-GitHub-Api-Version: 2022-11-28")
+          echo "Releasing $tag with $name"
 
-          Install:
-          \`\`\`
-          sudo apt install ./$deb
-          \`\`\`
+          # Job logs need auth to read, but ::error:: annotations are public.
+          # Every failure therefore carries the HTTP status and response body.
+          fail() {
+            printf '::error::%s\n' "$(printf '%s' "$1" | tr '\n' ' ' | tr -s ' ' | cut -c1-900)"
+            exit 1
+          }
 
-          Built against Debian 13 / Devuan excalibur Qt 6 packages."
-            fi
-            gh release upload "$tag" "dist/$deb" --clobber
-            gh release view "$tag" --json url -q .url
-          ) 2>&1
-          rc=$?
-          set -e
-          echo "$out"
-          if [ $rc -ne 0 ]; then
-            msg=$(echo "$out" | tr '\r' ' ' | tail -8 | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r//g' | cut -c1-900)
-            echo "::error::release step failed (rc=$rc): $msg"
-            exit $rc
+          # 1. can this token write to the repository?
+          code=$(curl -sS -o /tmp/repo.json -w '%{http_code}' "${hdr[@]}" "$api") ||
+            fail "could not reach the GitHub API"
+          [ "$code" = 200 ] || fail "GET repo: HTTP $code $(tr -d '\n' < /tmp/repo.json)"
+          echo "repo: $GITHUB_REPOSITORY  push permission: $(jq -r '.permissions.push // false' /tmp/repo.json)"
+
+          # 2. release for this tag, creating it when missing
+          code=$(curl -sS -o /tmp/rel.json -w '%{http_code}' "${hdr[@]}" "$api/releases/tags/$tag")
+          case "$code" in
+            200) echo "release $tag already exists" ;;
+            404)
+              body=$(printf 'arm64 Debian/Devuan package built natively on an arm64 runner from `%s`.\n\nInstall:\n\n```\nsudo apt install ./%s\n```\n\nBuilt against Debian 13 / Devuan excalibur Qt 6 packages.\n' "$tag" "$name")
+              jq -n --arg tag "$tag" \
+                    --arg name "Sigil $tag (arm64 .deb)" \
+                    --arg body "$body" \
+                    '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}' \
+                > /tmp/newrel.json
+              code=$(curl -sS -o /tmp/rel.json -w '%{http_code}' \
+                        -H "Content-Type: application/json" --data @/tmp/newrel.json \
+                        "${hdr[@]}" "$api/releases")
+              [ "$code" = 201 ] || fail "create release $tag: HTTP $code $(tr -d '\n' < /tmp/rel.json)"
+              echo "created release $tag" ;;
+            *) fail "look up release $tag: HTTP $code $(tr -d '\n' < /tmp/rel.json)" ;;
+          esac
+
+          # 3. upload the .deb, replacing an asset of the same name
+          rel_id=$(jq -r '.id' /tmp/rel.json)
+          old_id=$(jq -r --arg n "$name" '.assets[]? | select(.name == $n) | .id' /tmp/rel.json | head -1)
+          if [ -n "${old_id:-}" ]; then
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE "${hdr[@]}" "$api/releases/assets/$old_id")
+            echo "removed previous asset $old_id (HTTP $code)"
           fi
+          code=$(curl -sS -o /tmp/up.json -w '%{http_code}' -X POST \
+                    -H "Content-Type: application/octet-stream" --data-binary @"$deb" \
+                    "${hdr[@]}" "$api/releases/$rel_id/assets?name=$name")
+          [ "$code" = 201 ] || fail "upload $name: HTTP $code $(tr -d '\n' < /tmp/up.json)"
+          echo "uploaded $name ($(du -h "$deb" | cut -f1))"
+          echo "asset: $(jq -r '.browser_download_url' /tmp/up.json)"
+          echo "release: $(jq -r '.html_url' /tmp/rel.json)"
