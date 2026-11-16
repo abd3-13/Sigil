@@ -1,35 +1,13 @@
 name: Build Sigil AppImage the Sequel
 
 on:
-
-  push:
-    branches: [ master ]
-    paths-ignore:
-    - 'docs/**'
-    - 'installer/win_installer_note.txt'
-    - 'ChangeLog.txt'
-    - 'COPYING.txt'
-    - 'version.xml'
-    - '.retired_travis.yml'
-    - '**/**.md'
-
-  pull_request:
-    branches: [ master ]
-    paths-ignore:
-    - 'docs/**'
-    - 'installer/win_installer_note.txt'
-    - 'ChangeLog.txt'
-    - 'COPYING.txt'
-    - 'version.xml'
-    - '.retired_travis.yml'
-    - '**/**.md'
-
   workflow_dispatch:
     inputs:
       vers_info:
         description: 'Version for file name'
         required: true
         default: ''
+
 
 jobs:
   gather-info:

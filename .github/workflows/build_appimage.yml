@@ -1,14 +1,13 @@
 name: Build Sigil AppImage
 
 on:
-  push:
-
   workflow_dispatch:
     inputs:
       vers_info:
         description: 'Version for file name'
         required: true
         default: ''
+
 
 env:
   PY_VER: 3.13
