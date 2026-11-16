@@ -38,6 +38,17 @@ esac
 # Distro revision, lets us re-release packaging changes for the same upstream tag
 DEB_VERSION="${DEB_VERSION:-${SIGIL_VERSION}-1}"
 
+# Guard against a tag that does not match the source tree it points at:
+# a release tag must be <upstream version> or <upstream version>-<revision>.
+case "$DEB_VERSION" in
+  "$SIGIL_VERSION"|"$SIGIL_VERSION"-*) ;;
+  *)
+    echo "!! DEB_VERSION '$DEB_VERSION' does not match upstream version '$SIGIL_VERSION'." >&2
+    echo "!! Refusing to build a package whose version does not describe its source." >&2
+    exit 1
+    ;;
+esac
+
 echo "== Sigil $SIGIL_VERSION  =>  ${DEB_VERSION} (${PKG_ARCH})"
 
 # ---------------------------------------------------------------------------
