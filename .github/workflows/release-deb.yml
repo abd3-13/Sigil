@@ -105,14 +105,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG_INPUT: ${{ inputs.tag }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           if [ -n "${TAG_INPUT:-}" ]; then tag="$TAG_INPUT"; else tag="$GITHUB_REF_NAME"; fi
           deb=$(basename dist/*.deb)
           echo "Releasing $tag with $deb"
-          if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" \
-              --title "Sigil $tag (arm64 .deb)" \
-              --notes "arm64 Debian/Devuan package built natively on an arm64 runner from \`$tag\`.
+          # run in a subshell so the failure text can be surfaced as an
+          # annotation (job logs need auth, annotations do not)
+          set +e
+          out=$(
+            set -e
+            gh auth status
+            gh api "repos/$GITHUB_REPOSITORY" -q .full_name
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" \
+                --title "Sigil $tag (arm64 .deb)" \
+                --notes "arm64 Debian/Devuan package built natively on an arm64 runner from \`$tag\`.
 
           Install:
           \`\`\`
@@ -120,6 +127,15 @@ jobs:
           \`\`\`
 
           Built against Debian 13 / Devuan excalibur Qt 6 packages."
+            fi
+            gh release upload "$tag" "dist/$deb" --clobber
+            gh release view "$tag" --json url -q .url
+          ) 2>&1
+          rc=$?
+          set -e
+          echo "$out"
+          if [ $rc -ne 0 ]; then
+            msg=$(echo "$out" | tr '\r' ' ' | tail -8 | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r//g' | cut -c1-900)
+            echo "::error::release step failed (rc=$rc): $msg"
+            exit $rc
           fi
-          gh release upload "$tag" "dist/$deb" --clobber
-          gh release view "$tag" --json url -q .url
