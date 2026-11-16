@@ -52,13 +52,13 @@ Build options used (matching Debian's own packaging where relevant):
 ## Install
 
 ```
-sudo apt install ./sigil_2.7.0-1_arm64.deb
+sudo apt install ./sigil_2.8.6-1_arm64.deb
 ```
 
 or
 
 ```
-sudo dpkg -i sigil_2.7.0-1_arm64.deb && sudo apt-get -f install
+sudo dpkg -i sigil_2.8.6-1_arm64.deb && sudo apt-get -f install
 ```
 
 The executable is `/usr/bin/sigil` (a small launcher that sets up the library
@@ -92,8 +92,22 @@ push — attaches it to a GitHub release.
 Trigger a release:
 
 ```
-git tag 2.7.0
-git push origin 2.7.0
+git tag 2.8.6-1
+git push origin 2.8.6-1
 ```
 
 or run the workflow manually and pass an existing tag in the `tag` input.
+
+### Tag naming
+
+The release tag must point at a commit that contains `packaging/deb/`, so the
+upstream tag itself cannot be used (it is a pure upstream commit). The
+convention is `<upstream version>-<deb revision>`, e.g. `2.8.6-1`:
+
+* the tag name becomes the Debian version, so the asset is
+  `sigil_2.8.6-1_arm64.deb`;
+* it never collides with an upstream tag, so `git fetch upstream --tags` keeps
+  working;
+* bump the revision (`2.8.6-2`) for packaging-only changes without touching the
+  upstream version.
+
