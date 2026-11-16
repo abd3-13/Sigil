@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to attach the .deb to (leave empty to only build an artifact)"
+        description: "Release tag to build and publish (leave empty to only build an artifact)"
         required: false
         type: string
 
@@ -19,123 +19,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deb-arm64:
-    name: .deb (arm64)
-    # Native arm64 hosted runner: no qemu, no emulation.
-    runs-on: ubuntu-24.04-arm
-    # Build inside the same distribution family as the target devices so
-    # dependency and library versions line up with Devuan excalibur /
-    # Debian 13.
-    container: debian:trixie
-    steps:
-      # actions/checkout needs git inside the container
-      - name: Prepare container
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends git ca-certificates
-
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install build dependencies
-        run: |
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build pkgconf python3-dev \
-            qt6-base-dev qt6-base-dev-tools qt6-tools-dev qt6-tools-dev-tools \
-            qt6-webengine-dev qt6-webengine-dev-tools qt6-l10n-tools qt6-svg-dev \
-            libqt6webenginecore6-bin \
-            libhunspell-dev libpcre2-dev libminizip-dev zlib1g-dev libssl-dev \
-            xz-utils gh \
-            xvfb xauth x11-utils libgl1
-
-      - name: Build the package
-        working-directory: .
-        env:
-          TAG_INPUT: ${{ inputs.tag }}
-        run: |
-          set -euo pipefail
-          # Use the tag as the Debian revision when we are building a tagged release
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            export DEB_VERSION="$GITHUB_REF_NAME"
-          elif [ -n "${TAG_INPUT:-}" ]; then
-            export DEB_VERSION="$TAG_INPUT"
-          fi
-          echo "DEB_VERSION=${DEB_VERSION:-<default>}"
-          packaging/deb/build-deb.sh
-          ls -l dist/
-
-      - name: Smoke test
-        run: |
-          apt-get install -y --no-install-recommends ./dist/sigil_*.deb
-          # every shared library must resolve
-          if ldd /usr/lib/*/sigil/sigil | grep -q "not found"; then
-            echo "!! unresolved shared libraries:"; ldd /usr/lib/*/sigil/sigil | grep "not found"; exit 1
-          fi
-          # Sigil has no --version flag: start the GUI on a virtual display and
-          # require that it is still alive after 25s (i.e. no startup crash).
-          export QTWEBENGINE_DISABLE_SANDBOX=1 LIBGL_ALWAYS_SOFTWARE=1
-          Xvfb :99 -screen 0 1400x1000x24 >/tmp/xvfb.log 2>&1 &
-          sleep 2
-          export DISPLAY=:99
-          setsid sigil >/tmp/sigil.log 2>&1 &
-          sleep 25
-          if ! pgrep -f '/sigil/sigil$' >/dev/null; then
-            echo "!! sigil exited during startup"
-            echo "----- sigil.log -----"; cat /tmp/sigil.log || true
-            echo "----- xvfb.log -----";  cat /tmp/xvfb.log || true
-            exit 1
-          fi
-          echo "OK: sigil is running"
-          xdotool search --name '^Sigil$' 2>/dev/null || xwininfo -root -children | head -20 || true
-          pkill -f '/sigil/sigil$' || true
-          dpkg -s sigil | grep -E "^(Version|Depends|Installed-Size):"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sigil-deb-arm64
-          path: dist/*.deb
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Attach to GitHub release
-        if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_INPUT: ${{ inputs.tag }}
-        run: |
-          set -uo pipefail
-          if [ -n "${TAG_INPUT:-}" ]; then tag="$TAG_INPUT"; else tag="$GITHUB_REF_NAME"; fi
-          deb=$(basename dist/*.deb)
-          echo "Releasing $tag with $deb"
-          # run in a subshell so the failure text can be surfaced as an
-          # annotation (job logs need auth, annotations do not)
-          set +e
-          out=$(
-            set -e
-            gh auth status
-            gh api "repos/$GITHUB_REPOSITORY" -q .full_name
-            if ! gh release view "$tag" >/dev/null 2>&1; then
-              gh release create "$tag" \
-                --title "Sigil $tag (arm64 .deb)" \
-                --notes "arm64 Debian/Devuan package built natively on an arm64 runner from \`$tag\`.
-
-          Install:
-          \`\`\`
-          sudo apt install ./$deb
-          \`\`\`
-
-          Built against Debian 13 / Devuan excalibur Qt 6 packages."
-            fi
-            gh release upload "$tag" "dist/$deb" --clobber
-            gh release view "$tag" --json url -q .url
-          ) 2>&1
-          rc=$?
-          set -e
-          echo "$out"
-          if [ $rc -ne 0 ]; then
-            msg=$(echo "$out" | tr '\r' ' ' | tail -8 | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r//g' | cut -c1-900)
-            echo "::error::release step failed (rc=$rc): $msg"
-            exit $rc
-          fi
+  deb:
+    uses: ./.github/workflows/deb-build.yml
+    permissions:
+      contents: write
+    with:
+      # tag push -> the tag name; manual run -> the tag input (may be empty)
+      tag: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+      publish: ${{ github.event_name == 'push' || inputs.tag != '' }}

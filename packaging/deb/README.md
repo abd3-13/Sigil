@@ -84,12 +84,23 @@ path), the real binary is
 
 ## CI
 
-`.github/workflows/release-deb.yml` runs on `ubuntu-24.04-arm` (native arm64,
-no emulation) inside a `debian:trixie` container, builds the package with the
-same script, smoke-tests it headless, uploads it as an artifact, and — on a tag
-push — attaches it to a GitHub release.
+Two workflows are involved:
 
-Trigger a release:
+* `.github/workflows/release-deb.yml` — triggered by a `2.*` tag push or manually.
+  It only forwards to the reusable builder below.
+* `.github/workflows/deb-build.yml` — `workflow_call` builder: `ubuntu-24.04-arm`
+  runner, `debian:trixie` container, builds with `packaging/deb/build-deb.sh`,
+  smoke-tests the package headless, uploads it as an artifact and attaches it to
+  the GitHub release.
+* `.github/workflows/upstream-watch.yml` — daily cron. When upstream publishes a
+  new `X.Y.Z` tag it merges it into `arm64-deb`, verifies that `CMakeLists.txt`
+  matches, creates tag `X.Y.Z-1` and runs the builder. If a previous run failed
+  to publish, it retries building the existing tag on the next run.
+
+The upstream workflows (AppImage, Windows, macOS, Linux distro, winget, blog
+post) are limited to manual dispatch so only the deb build runs automatically.
+
+Trigger a release by hand:
 
 ```
 git tag 2.8.6-1
