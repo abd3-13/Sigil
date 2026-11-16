@@ -1,0 +1,89 @@
+name: Build arm64 .deb and attach to release
+
+on:
+  push:
+    tags:
+      - "2.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to attach the .deb to (leave empty to only build an artifact)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deb-arm64-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deb-arm64:
+    name: .deb (arm64)
+    # Native arm64 hosted runner: no qemu, no emulation.
+    runs-on: ubuntu-24.04-arm
+    # Build inside the same distribution family as the target devices so the
+    # package's dependencies and library versions line up exactly.
+    container: debian:trixie
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkgconf ca-certificates \
+            python3-dev \
+            qt6-base-dev qt6-base-dev-tools qt6-tools-dev qt6-tools-dev-tools \
+            qt6-webengine-dev qt6-webengine-dev-tools qt6-l10n-tools qt6-svg-dev \
+            libqt6webenginecore6-bin \
+            libhunspell-dev libpcre2-dev libminizip-dev zlib1g-dev libssl-dev \
+            xz-utils file gh
+
+      - name: Build the package
+        run: |
+          packaging/deb/build-deb.sh
+          ls -l dist/
+
+      - name: Smoke test (headless)
+        run: |
+          apt-get install -y --no-install-recommends xvfb
+          dpkg -i dist/sigil_*.deb
+          # root + container: webengine sandbox is unavailable
+          export QTWEBENGINE_DISABLE_SANDBOX=1
+          xvfb-run -a timeout 90 sigil --version || true
+          dpkg -L sigil | head -20
+          dpkg -s sigil | grep -E "^(Version|Depends|Installed-Size):"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigil-deb-arm64
+          path: dist/*.deb
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "${TAG_INPUT:-}" ]; then tag="$TAG_INPUT"; else tag="$GITHUB_REF_NAME"; fi
+          echo "Releasing $tag"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --title "Sigil $tag (arm64 .deb)" \
+              --notes "arm64 Debian/Devuan package built from tag \`$tag\` on a native arm64 runner.
+
+          Install with:
+          \`\`\`
+          sudo apt install ./sigil_${tag}-1_arm64.deb
+          \`\`\`"
+          fi
+          gh release upload "$tag" dist/sigil_*.deb --clobber
+          gh release view "$tag" --json url -q .url

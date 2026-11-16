@@ -1,0 +1,32 @@
+Package: sigil
+Version: @VERSION@
+Section: editors
+Priority: optional
+Architecture: @ARCH@
+Maintainer: abd3-13 <abd3-13@users.noreply.github.com>
+Installed-Size: @INSTALLED_SIZE@
+Depends: @DEPENDS@
+Recommends: python3-chardet, python3-css-parser, python3-cssselect, python3-cssutils, python3-dulwich, python3-html5lib, python3-lxml, python3-pil, python3-pyqt5, python3-pyqtwebengine, python3-regex
+Suggests: pageedit
+Homepage: https://sigil-ebook.com
+Description: multi-platform ebook editor
+ Sigil is a free, open source, multi-platform ebook editor.
+ It is designed to edit books in ePub format.
+ .
+ Features:
+ .
+  * Full UTF-16 support;
+  * Full EPUB 2 and EPUB 3 spec support;
+  * Multiple views: Book View, Code View and Preview View;
+  * WYSIWYG editing in Book View;
+  * Complete control over directly editing EPUB syntax in Code View;
+  * Table of Contents generator with multi-level heading support;
+  * Metadata editor with full support for all possible metadata entries (more
+    than 200) with full descriptions for each;
+  * User interface translated into many languages;
+  * Spell checking with default and user configurable dictionaries;
+  * Full Regular Expression (PCRE) support for Find & Replace;
+  * Supports import of EPUB and HTML files, images, and style sheets;
+  * Files can be validated for EPUB compliance with the FlightCrew validator;
+  * HTML Tidy: all imported files have their formatting corrected, and your
+    editing can be optionally cleaned.

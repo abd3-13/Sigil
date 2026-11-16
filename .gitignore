@@ -84,3 +84,9 @@ build
 squashfs-root/
 *.AppImage
 *.zsync
+
+# --- deb packaging / build artifacts ---
+/build/
+/dist/
+/stage/
+*.deb
