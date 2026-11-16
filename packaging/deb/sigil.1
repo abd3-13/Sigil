@@ -1,0 +1,37 @@
+.TH SIGIL 1 "2026-11-16" "Sigil 2.7" "User Commands"
+.SH NAME
+sigil \- multi\-platform EPUB ebook editor
+.SH SYNOPSIS
+.B sigil
+.RI [ options ]
+.RI [ file .epub ]
+.SH DESCRIPTION
+.B Sigil
+is a free, open source, multi\-platform ebook editor, designed to edit books
+in EPUB format.
+.PP
+It offers a WYSIWYG editor (Book View), a full syntax editor (Code View) and a
+live preview, plus a metadata editor, a table of contents generator, spell
+checking (hunspell), PCRE based search and replace, and a Python plugin
+framework.
+.SH FILES
+.TP
+.I /usr/share/sigil
+Application data: translations, bundled spell check dictionaries, plugin
+launchers and helper Python libraries.
+.TP
+.I ~/.local/share/sigil\-ebook\-editor
+Per\-user settings, plugins and checkpoints.
+.SH ENVIRONMENT
+.TP
+.B SIGIL_SHARE_PREFIX
+Overrides the application data directory compiled into the binary.
+.TP
+.B SIGIL_DICTIONARIES
+Extra hunspell dictionary directories, separated by
+.BR : .
+.SH SEE ALSO
+The Sigil user guide and online documentation:
+.I https://sigil-ebook.com
+.SH AUTHOR
+Sigil was written by John Schember, Kevin Hendricks and contributors.
