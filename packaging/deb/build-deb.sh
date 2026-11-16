@@ -27,9 +27,14 @@ DO_BUILD=1
 # ---------------------------------------------------------------------------
 # version + metadata
 # ---------------------------------------------------------------------------
-SIGIL_VERSION=$(awk '/set\( *SIGIL_MAJOR_VERSION/{print $2}' "$SRC_DIR/CMakeLists.txt")
-SIGIL_VERSION="$SIGIL_VERSION.$(awk '/set\( *SIGIL_MINOR_VERSION/{print $2}' "$SRC_DIR/CMakeLists.txt")"
-SIGIL_VERSION="$SIGIL_VERSION.$(awk '/set\( *SIGIL_REVISION_VERSION/{print $2}' "$SRC_DIR/CMakeLists.txt")"
+cmake_var() {
+  sed -n "s/^ *set *( *$1 *\([0-9][0-9]*\).*/\1/p" "$SRC_DIR/CMakeLists.txt" | head -1
+}
+SIGIL_VERSION="$(cmake_var SIGIL_MAJOR_VERSION).$(cmake_var SIGIL_MINOR_VERSION).$(cmake_var SIGIL_REVISION_VERSION)"
+case "$SIGIL_VERSION" in
+  [0-9]*.[0-9]*.[0-9]*) ;;
+  *) echo "!! could not determine Sigil version from CMakeLists.txt" >&2; exit 1 ;;
+esac
 # Distro revision, lets us re-release packaging changes for the same upstream tag
 DEB_VERSION="${DEB_VERSION:-${SIGIL_VERSION}-1}"
 
@@ -93,7 +98,7 @@ if [ -z "$SHLIBS_DEPENDS" ]; then
   exit 1
 fi
 # libsigilgumbo/libhunspell are shipped in the package itself; drop any bogus refs
-SHLIBS_DEPENDS=$(echo "$SHLIBS_DEPENDS" | tr ',' '\n' | sed '/^\s*$/d' | sort -u | paste -sd, - | sed 's/,/, /g')
+SHLIBS_DEPENDS=$(echo "$SHLIBS_DEPENDS" | tr ',' '\n' | sed '/^\s*$/d' | sort -u | paste -sd, - | sed -e 's/,/, /g' -e 's/  */ /g')
 
 # Python 3 is required for the plugin framework and embedded python
 DEPENDS="$SHLIBS_DEPENDS, python3 (>= 3.9)"
