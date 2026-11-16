@@ -1,0 +1,89 @@
+name: Watch upstream for new Sigil releases
+
+# Detects a new upstream tag, merges it into the packaging branch, tags
+# "<upstream>-1" and builds + publishes the arm64 .deb for it.
+on:
+  schedule:
+    # daily, 04:17 UTC
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upstream-watch
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    name: Look for a new upstream tag
+    runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.detect.outputs.new_tag }}
+    steps:
+      - name: Checkout packaging branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect and tag
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+
+          git config user.name  "sigil-deb-bot"
+          git config user.email "sigil-deb-bot@users.noreply.github.com"
+          git remote add upstream https://github.com/Sigil-Ebook/Sigil.git || true
+          git fetch --tags --force upstream
+
+          # upstream releases are plain X.Y.Z tags (our packaging tags are X.Y.Z-N)
+          latest=$(git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          [ -n "$latest" ] || { echo "::error::could not determine the newest upstream tag"; exit 1; }
+          echo "newest upstream tag: $latest"
+
+          want="$latest-1"
+          if gh release view "$want" >/dev/null 2>&1; then
+            echo "release $want already exists - nothing to do"
+            exit 0
+          fi
+          if git rev-parse -q --verify "refs/tags/$want" >/dev/null; then
+            echo "tag $want exists but has no release - rebuilding it"
+            echo "new_tag=$want" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git checkout -B arm64-deb origin/arm64-deb
+          if ! git merge --no-edit "$latest" >/tmp/merge.log 2>&1; then
+            echo "::error::merging upstream $latest into arm64-deb failed - resolve the conflict manually"
+            tail -20 /tmp/merge.log
+            exit 1
+          fi
+
+          # the tag must describe the source tree it points at
+          v="$(sed -n 's/^ *set *( *SIGIL_MAJOR_VERSION *\([0-9]*\).*/\1/p' CMakeLists.txt | head -1)."
+          v="$v$(sed -n 's/^ *set *( *SIGIL_MINOR_VERSION *\([0-9]*\).*/\1/p' CMakeLists.txt | head -1)."
+          v="$v$(sed -n 's/^ *set *( *SIGIL_REVISION_VERSION *\([0-9]*\).*/\1/p' CMakeLists.txt | head -1)"
+          if [ "$v" != "$latest" ]; then
+            echo "::error::CMakeLists.txt says $v but the newest upstream tag is $latest - refusing to tag"
+            exit 1
+          fi
+
+          git tag -a "$want" -m "Sigil $latest arm64 Debian/Devuan package"
+          git push origin arm64-deb
+          git push origin "$want"
+          echo "new_tag=$want" >> "$GITHUB_OUTPUT"
+          echo "created $want"
+
+  build:
+    name: Build ${{ needs.detect.outputs.new_tag }}
+    needs: detect
+    if: needs.detect.outputs.new_tag != ''
+    uses: ./.github/workflows/deb-build.yml
+    permissions:
+      contents: write
+    with:
+      tag: ${{ needs.detect.outputs.new_tag }}
+      publish: true
