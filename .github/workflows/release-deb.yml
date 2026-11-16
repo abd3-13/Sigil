@@ -46,10 +46,22 @@ jobs:
             qt6-webengine-dev qt6-webengine-dev-tools qt6-l10n-tools qt6-svg-dev \
             libqt6webenginecore6-bin \
             libhunspell-dev libpcre2-dev libminizip-dev zlib1g-dev libssl-dev \
-            xz-utils gh xvfb
+            xz-utils gh \
+            xvfb xauth x11-utils libgl1
 
       - name: Build the package
+        working-directory: .
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
         run: |
+          set -euo pipefail
+          # Use the tag as the Debian revision when we are building a tagged release
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            export DEB_VERSION="$GITHUB_REF_NAME"
+          elif [ -n "${TAG_INPUT:-}" ]; then
+            export DEB_VERSION="$TAG_INPUT"
+          fi
+          echo "DEB_VERSION=${DEB_VERSION:-<default>}"
           packaging/deb/build-deb.sh
           ls -l dist/
 
@@ -63,13 +75,20 @@ jobs:
           # Sigil has no --version flag: start the GUI on a virtual display and
           # require that it is still alive after 25s (i.e. no startup crash).
           export QTWEBENGINE_DISABLE_SANDBOX=1 LIBGL_ALWAYS_SOFTWARE=1
-          xvfb-run -a sigil & pid=$!
+          Xvfb :99 -screen 0 1400x1000x24 >/tmp/xvfb.log 2>&1 &
+          sleep 2
+          export DISPLAY=:99
+          setsid sigil >/tmp/sigil.log 2>&1 &
           sleep 25
-          if kill -0 "$pid" 2>/dev/null; then
-            echo "OK: sigil stayed alive"; pkill -f 'usr/lib/.*/sigil/sigil' || true
-          else
-            echo "!! sigil exited during startup"; exit 1
+          if ! pgrep -f '/sigil/sigil$' >/dev/null; then
+            echo "!! sigil exited during startup"
+            echo "----- sigil.log -----"; cat /tmp/sigil.log || true
+            echo "----- xvfb.log -----";  cat /tmp/xvfb.log || true
+            exit 1
           fi
+          echo "OK: sigil is running"
+          xdotool search --name '^Sigil$' 2>/dev/null || xwininfo -root -children | head -20 || true
+          pkill -f '/sigil/sigil$' || true
           dpkg -s sigil | grep -E "^(Version|Depends|Installed-Size):"
 
       - name: Upload artifact
