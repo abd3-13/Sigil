@@ -90,8 +90,15 @@ Two workflows are involved:
   It only forwards to the reusable builder below.
 * `.github/workflows/deb-build.yml` — `workflow_call` builder: `ubuntu-24.04-arm`
   runner, `debian:trixie` container, builds with `packaging/deb/build-deb.sh`,
-  smoke-tests the package headless, uploads it as an artifact and attaches it to
-  the GitHub release.
+  smoke-tests the package headless, uploads it as an artifact, publishes it with
+  `softprops/action-gh-release`, and finally re-downloads the published asset
+  from its public release URL and compares its size with the built `.deb`.
+  That last step is token-free and reports through `::notice::`/`::error::`
+  annotations, so a failed verification is readable without access to the
+  (authenticated) job log.
+
+Note for local runs of the CI recipe: the container needs `curl` and `file` on
+top of the build dependencies; `debian:trixie` ships neither.
 * `.github/workflows/upstream-watch.yml` — daily cron. When upstream publishes a
   new `X.Y.Z` tag it merges it into `arm64-deb`, verifies that `CMakeLists.txt`
   matches, creates tag `X.Y.Z-1` and runs the builder. If a previous run failed
