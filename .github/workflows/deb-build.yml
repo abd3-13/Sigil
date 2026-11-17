@@ -115,22 +115,27 @@ jobs:
 
       - name: Verify the release asset
         if: inputs.publish && inputs.tag != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
+        # Deliberately token-free and jq-free: this checks what a user actually
+        # does, i.e. download the asset from the public release URL. Notices and
+        # errors are public on the run page, so a failure here is diagnosable
+        # without access to the (authenticated) job log.
         run: |
-          set -uo pipefail
           tag="${{ inputs.tag }}"
-          name=$(basename "$(ls dist/*.deb | head -1)")
-          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
-          hdr=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json")
-          fail() {
-            printf '::error::%s\n' "$(printf '%s' "$1" | tr '\n' ' ' | tr -s ' ' | cut -c1-900)"
+          deb=$(ls dist/*.deb | head -1)
+          name=$(basename "$deb")
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$name"
+          echo "::notice::verifying $url"
+          code=$(curl -sSL -o /tmp/downloaded.deb -w '%{http_code}' "$url" || echo 000)
+          got=$(stat -c %s /tmp/downloaded.deb 2>/dev/null || echo 0)
+          want=$(stat -c %s "$deb" 2>/dev/null || echo 0)
+          echo "::notice::HTTP $code, downloaded $got bytes, built $want bytes"
+          if [ "$code" != "200" ]; then
+            echo "::error::$name is not downloadable: HTTP $code from $url"
             exit 1
-          }
-          code=$(curl -sS -o /tmp/rel.json -w '%{http_code}' "${hdr[@]}" "$api/releases/tags/$tag") || code=000
-          [ "$code" = 200 ] || fail "release $tag not readable: HTTP $code $(tr -d '\n' < /tmp/rel.json)"
-          echo "release: $(jq -r '.html_url' /tmp/rel.json)"
-          echo "assets:"; jq -r '.assets[].name' /tmp/rel.json
-          jq -r '.assets[].name' /tmp/rel.json | grep -qx "$name" ||
-            fail "asset $name missing from release $tag"
-          echo "download: $(jq -r --arg n "$name" '.assets[] | select(.name == $n) | .browser_download_url' /tmp/rel.json)"
+          fi
+          if [ "$got" != "$want" ]; then
+            echo "::error::$name size mismatch: release has $got bytes, build produced $want"
+            exit 1
+          fi
+          file /tmp/downloaded.deb
+          echo "OK: $tag publishes $name ($got bytes)"
