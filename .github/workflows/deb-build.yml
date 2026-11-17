@@ -46,7 +46,7 @@ jobs:
             qt6-webengine-dev qt6-webengine-dev-tools qt6-l10n-tools qt6-svg-dev \
             libqt6webenginecore6-bin \
             libhunspell-dev libpcre2-dev libminizip-dev zlib1g-dev libssl-dev \
-            xz-utils jq \
+            xz-utils jq curl file \
             xvfb xauth x11-utils libgl1
 
       - name: Build the package
@@ -124,6 +124,7 @@ jobs:
           deb=$(ls dist/*.deb | head -1)
           name=$(basename "$deb")
           url="https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$name"
+          command -v curl >/dev/null || { echo "::error::curl is missing from the container"; exit 1; }
           echo "::notice::verifying $url"
           code=$(curl -sSL -o /tmp/downloaded.deb -w '%{http_code}' "$url" || echo 000)
           got=$(stat -c %s /tmp/downloaded.deb 2>/dev/null || echo 0)
